@@ -132,6 +132,7 @@ class View(QChartView):
         self.hrv_band_2.setOpacity(0.2)
         self.hrv_band_2.setPen(QPen(Qt.NoPen))
 
+        
         # Heart rate variability chart
         # self.chart_hrv.addSeries(self.series_hrv)
         self.chart_hrv.addSeries(self.hrv_band_0)

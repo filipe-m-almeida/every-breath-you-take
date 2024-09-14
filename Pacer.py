@@ -24,17 +24,17 @@ class Pacer(QObject):
         )
         self.stream.start()
 
-        # Noise settings for ocean wave-like sound
-        self.noise_buffer = np.zeros(self.fs)  # 1-second buffer for noise
-        self.lowcut = 100.0  # Lower frequency cut-off for filtering
-        self.highcut = 1200.0  # Upper frequency cut-off for filtering
+        # Adjusted noise settings for ocean wave-like sound
+        self.lowcut = 50.0   # Lower frequency cut-off for filtering
+        self.highcut = 1000.0  # Upper frequency cut-off for filtering
 
-        # Precompute filter coefficients
-        self.b, self.a = self.butter_bandpass(self.lowcut, self.highcut, self.fs)
-        # Initialize filter state
-        self.zi = np.zeros(max(len(self.a), len(self.b)) - 1)
-        # Initialize phase for amplitude modulation
-        self.sound_phase = 0
+        # Precompute bandpass filter coefficients for ocean wave effect
+        self.b_band, self.a_band = self.butter_bandpass(self.lowcut, self.highcut, self.fs, order=4)
+        self.zi_band = np.zeros(max(len(self.a_band), len(self.b_band)) - 1)
+
+        # Precompute coefficients for pink noise generation
+        self.b_pink, self.a_pink = butter(1, 0.1, btype='low')  # Adjust the cutoff for pink noise
+        self.zi_pink = np.zeros(max(len(self.a_pink), len(self.b_pink)) - 1)
 
     def breathing_pattern(self, breathing_rate, time):
         """Returns radius of pacer disk.
@@ -64,18 +64,26 @@ class Pacer(QObject):
         t = (np.arange(frames) + self.sound_phase) / self.fs
         self.sound_phase += frames
 
-        # Calculate amplitude modulation
+        # Calculate amplitude modulation with minimum volume level
         breathing_rate_hz = self.last_breathing_rate / 60  # Convert bpm to Hz
-        amplitude = 0.5 + 0.5 * np.sin(2 * np.pi * breathing_rate_hz * t)
+        amplitude_mod = 0.75 + 0.25 * np.sin(2 * np.pi * breathing_rate_hz * t)
 
         # Generate white noise
-        noise = np.random.normal(0, 1, frames)
+        white_noise = np.random.normal(0, 1, frames)
+
+        # Generate pink noise by filtering white noise
+        pink_noise, self.zi_pink = lfilter(self.b_pink, self.a_pink, white_noise, zi=self.zi_pink)
 
         # Apply bandpass filter with state preservation
-        filtered_noise, self.zi = lfilter(self.b, self.a, noise, zi=self.zi)
+        filtered_noise, self.zi_band = lfilter(self.b_band, self.a_band, pink_noise, zi=self.zi_band)
 
         # Modulate amplitude
-        modulated_noise = amplitude * filtered_noise
+        modulated_noise = amplitude_mod * filtered_noise
+
+        # Normalize to prevent clipping
+        max_val = np.max(np.abs(modulated_noise))
+        if max_val > 1.0:
+            modulated_noise = modulated_noise / max_val
 
         outdata[:] = modulated_noise.reshape(-1, 1)
 

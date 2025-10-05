@@ -42,6 +42,7 @@ class View(QChartView):
 
         self.create_breath_chart()
         self.create_hrv_chart()
+        self.create_coherence_chart()
         self.create_circles_layout()
         self.set_view_layout()
         self.start_view_update()
@@ -162,6 +163,27 @@ class View(QChartView):
         self.series_br_marker.attachAxis(self.axis_hrv_x)
         self.series_br_marker.attachAxis(self.axis_br_y)
 
+    def create_coherence_chart(self):
+        '''
+        Chart showing HR coherence over time
+        '''
+        self.chart_coherence = create_chart(title='Coherence', showTitle=False, showLegend=False)
+
+        self.series_coherence = create_spline_series(GREEN, LINEWIDTH)
+        self.series_coherence_marker = create_scatter_series(GREEN, DOTSIZE_SMALL)
+
+        self.axis_coh_x = create_axis(title=None, tickCount=10, rangeMin=-self.HRV_SERIES_TIME_RANGE, rangeMax=0, labelSize=10)
+        self.axis_coh_y = create_axis(title="HR Coherence", color=GREEN, rangeMin=0, rangeMax=20, labelSize=10)
+
+        self.chart_coherence.addSeries(self.series_coherence)
+        self.chart_coherence.addSeries(self.series_coherence_marker)
+        self.chart_coherence.addAxis(self.axis_coh_x, Qt.AlignBottom)
+        self.chart_coherence.addAxis(self.axis_coh_y, Qt.AlignLeft)
+        self.series_coherence.attachAxis(self.axis_coh_x)
+        self.series_coherence.attachAxis(self.axis_coh_y)
+        self.series_coherence_marker.attachAxis(self.axis_coh_x)
+        self.series_coherence_marker.attachAxis(self.axis_coh_y)
+
     def create_circles_layout(self):
 
         self.circles_widget = CirclesWidget(*self.model.pacer.update(self.pacer_rate), GOLD, BLUE, RED)
@@ -247,6 +269,12 @@ class View(QChartView):
 
         graphLayout.addLayout(topRowLayout, stretch=1)
         graphLayout.addWidget(hrv_widget, stretch=1)
+
+        # Coherence chart widget
+        coh_widget = QChartView(self.chart_coherence)
+        coh_widget.setStyleSheet("background-color: transparent;")
+        coh_widget.setRenderHint(QPainter.Antialiasing)
+        graphLayout.addWidget(coh_widget, stretch=1)
         graphLayout.setContentsMargins(0, 0, 0, 0)
 
         layout.addLayout(graphLayout, stretch=10)
@@ -330,6 +358,20 @@ class View(QChartView):
         series_maxmin_new = self.model.hrv_analyser.maxmin_history.get_qpoint_list()
         self.series_maxmin.replace(series_maxmin_new)
         self.series_maxmin_marker.replace(series_maxmin_new)
+
+        # Coherence plot (uses data updated by update_hr_coherence timer)
+        series_coh_new = self.model.hrv_analyser.coherence_history.get_qpoint_list()
+        self.series_coherence.replace(series_coh_new)
+        self.series_coherence_marker.replace(series_coh_new)
+
+        # Auto-scale coherence Y-axis based on recent window if possible
+        coh_range = self.model.hrv_analyser.coherence_history.get_values_range((-self.HRV_SERIES_TIME_RANGE, 0))
+        if coh_range is not None:
+            ymin = 0 if coh_range[0] < 0 else coh_range[0]
+            ymax = max(10, coh_range[1])
+            if ymin == ymax:
+                ymax = ymin + 1
+            self.axis_coh_y.setRange(ymin, ymax)
 
     def update_hr_coherence(self):
         """Compute and display HR coherence if enough data is available"""

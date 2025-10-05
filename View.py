@@ -211,6 +211,13 @@ class View(QChartView):
         self.message_box.setFixedHeight(15)
         self.message_box.setAlignment(Qt.AlignLeft)
 
+        # HR coherence label
+        self.hr_coherence_label = QLabel("HR Coherence: --")
+        self.hr_coherence_label.setStyleSheet("QLabel {color: black}")
+        self.hr_coherence_label.setFixedWidth(160)
+        self.hr_coherence_label.setFixedHeight(15)
+        self.hr_coherence_label.setAlignment(Qt.AlignLeft)
+
         self.scan_button = QPushButton("Scan")
         self.scan_button.clicked.connect(self._on_scan_button_press)
         shadow = QGraphicsDropShadowEffect()
@@ -226,6 +233,8 @@ class View(QChartView):
         controlLayout = QHBoxLayout()
         controlLayout.addStretch(1)
         controlLayout.addWidget(self.message_box)
+        controlLayout.addSpacing(10)
+        controlLayout.addWidget(self.hr_coherence_label)
         # controlLayout.addStretch(1)
         controlLayout.addWidget(self.scan_button)
         controlLayout.addWidget(self.device_menu)
@@ -259,9 +268,15 @@ class View(QChartView):
         self.pacer_timer.setInterval(self.UPDATE_PACER_PERIOD)  # ms (20 Hz)
         self.pacer_timer.timeout.connect(self.plot_circles)
 
+        # Update HR coherence roughly once per second
+        self.coherence_timer = QTimer()
+        self.coherence_timer.setInterval(1000)
+        self.coherence_timer.timeout.connect(self.update_hr_coherence)
+
         self.update_acc_series_timer.start()
         self.update_series_timer.start()
         self.pacer_timer.start()
+        self.coherence_timer.start()
 
     def update_pacer_rate(self):
         self.pacer_rate = self.pacer_slider.value()/2
@@ -315,6 +330,25 @@ class View(QChartView):
         series_maxmin_new = self.model.hrv_analyser.maxmin_history.get_qpoint_list()
         self.series_maxmin.replace(series_maxmin_new)
         self.series_maxmin_marker.replace(series_maxmin_new)
+
+    def update_hr_coherence(self):
+        """Compute and display HR coherence if enough data is available"""
+        try:
+            # Require at least a few IBI points to avoid empty-window errors
+            if self.model.hrv_analyser.ibi_history.n_values() < 3:
+                self.hr_coherence_label.setText("HR Coherence: --")
+                return
+
+            self.model.hrv_analyser.update_coherence()
+            value = self.model.hrv_analyser.hr_coherence
+            if value is None or (isinstance(value, float) and (np.isnan(value) or np.isinf(value))):
+                self.hr_coherence_label.setText("HR Coherence: --")
+            else:
+                self.hr_coherence_label.setText(f"HR Coherence: {value:.2f}")
+        except Exception as e:
+            # Keep UI resilient if computation fails early in a session
+            self.logger.error(f"Coherence update failed: {e}")
+            self.hr_coherence_label.setText("HR Coherence: --")
 
     async def set_first_sensor_found(self):
         ''' List valid devices and connect to first one'''
